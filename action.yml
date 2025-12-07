@@ -1,4 +1,4 @@
-name: Test
+name: CVector Python Test
 description: Setup Poetry and run ruff, mypy, and pytest for Python projects
 
 inputs:
@@ -70,3 +70,7 @@ runs:
     - name: Run pytest
       shell: bash
       run: poetry run pytest
+
+branding:
+  icon: check-circle
+  color: orange
