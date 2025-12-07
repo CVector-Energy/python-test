@@ -13,7 +13,7 @@ inputs:
   src-dirs:
     description: Source directories for linting (space-separated)
     required: false
-    default: "src tests"
+    default: "."
 
 runs:
   using: composite

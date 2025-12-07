@@ -16,7 +16,7 @@ Test Poetry-based projects using ruff, mypy, and pytest.
 |-------|-------------|----------|---------|
 | `python-version` | Python version to use | No | `3.14` |
 | `poetry-version` | Poetry version to install | No | `2.2.1` |
-| `src-dirs` | Source directories for linting (space-separated) | No | `src tests` |
+| `src-dirs` | Source directories for linting (space-separated) | No | `.` |
 
 ## Usage
 
