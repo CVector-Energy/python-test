@@ -14,6 +14,14 @@ inputs:
     description: Source directories for linting (space-separated)
     required: false
     default: "."
+  working-directory:
+    description: Directory containing pyproject.toml (defaults to repo root)
+    required: false
+    default: "."
+  run-pytest:
+    description: Whether to run pytest
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -42,33 +50,40 @@ runs:
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.venv
-        key: venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+        key: venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ inputs.working-directory }}-${{ hashFiles(format('{0}/poetry.lock', inputs.working-directory)) }}
         restore-keys: |
           venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-
 
     - name: Sync dependencies
       if: steps.venv.outputs.cache-hit != 'true'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: poetry sync --no-interaction --no-root
 
     - name: Install project
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: poetry install --no-interaction --only-root
 
     - name: Run ruff check
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: poetry run ruff check ${{ inputs.src-dirs }}
 
     - name: Run ruff format check
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: poetry run ruff format --check ${{ inputs.src-dirs }}
 
     - name: Run mypy
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: poetry run mypy ${{ inputs.src-dirs }}
 
     - name: Run pytest
+      if: inputs.run-pytest == 'true'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: poetry run pytest
 
 branding:
