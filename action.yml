@@ -1,15 +1,15 @@
 name: CVector Python Test
-description: Setup Poetry and run ruff, mypy, and pytest for Python projects
+description: Setup UV and run ruff, mypy, and pytest for Python projects
 
 inputs:
   python-version:
     description: Python version to use
     required: false
     default: "3.14"
-  poetry-version:
-    description: Poetry version to install
+  uv-version:
+    description: UV version to install
     required: false
-    default: "2.2.1"
+    default: "0.10.2"
   src-dirs:
     description: Source directories for linting (space-separated)
     required: false
@@ -32,59 +32,47 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
-    - name: Load cached Poetry installation
-      id: cached-poetry
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-      with:
-        path: ~/.local
-        key: poetry-${{ inputs.poetry-version }}-python-${{ steps.setup.outputs.python-version }}
-
-    - name: Install Poetry
-      uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
-      with:
-        version: ${{ inputs.poetry-version }}
-        virtualenvs-path: ~/.venv
+    - name: Install UV
+      shell: bash
+      run: |
+        curl -LsSf https://astral.sh/uv/${{ inputs.uv-version }}/install.sh | sh
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Load cached venv
       id: venv
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: ~/.venv
-        key: venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ inputs.working-directory }}-${{ hashFiles(format('{0}/poetry.lock', inputs.working-directory)) }}
+        path: ${{ inputs.working-directory }}/.venv
+        key: venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ inputs.working-directory }}-${{ hashFiles(format('{0}/uv.lock', inputs.working-directory)) }}
         restore-keys: |
-          venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-
+          venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ inputs.working-directory }}-
 
     - name: Sync dependencies
       if: steps.venv.outputs.cache-hit != 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: poetry sync --no-interaction --no-root
-
-    - name: Install project
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: poetry install --no-interaction --only-root
+      run: uv sync --frozen
 
     - name: Run ruff check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: poetry run ruff check ${{ inputs.src-dirs }}
+      run: uv run ruff check ${{ inputs.src-dirs }}
 
     - name: Run ruff format check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: poetry run ruff format --check ${{ inputs.src-dirs }}
+      run: uv run ruff format --check ${{ inputs.src-dirs }}
 
     - name: Run mypy
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: poetry run mypy ${{ inputs.src-dirs }}
+      run: uv run mypy ${{ inputs.src-dirs }}
 
     - name: Run pytest
       if: inputs.run-pytest == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: poetry run pytest
+      run: uv run pytest
 
 branding:
   icon: check-circle
