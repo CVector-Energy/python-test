@@ -9,7 +9,7 @@ inputs:
   uv-version:
     description: UV version to install
     required: false
-    default: "0.10.2"
+    default: "0.11.2"
   src-dirs:
     description: Source directories for linting (space-separated)
     required: false
@@ -22,6 +22,15 @@ inputs:
     description: Whether to run pytest
     required: false
     default: "true"
+  repair-token:
+    description: >
+      Token for git push. When provided, enables a repair step that runs
+      after check failures: uv sync, ruff check --fix, ruff format, then
+      commit and push. Use a GitHub App token so the push triggers a new
+      workflow run. The calling workflow must checkout with
+      ref: ${{ github.head_ref }}.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -72,6 +81,27 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: uv run pytest
+
+    - name: Repair
+      if: failure() && inputs.repair-token != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        REPAIR_TOKEN: ${{ inputs.repair-token }}
+      run: |
+        git config --global url."https://x-access-token:${REPAIR_TOKEN}@github.com/".insteadOf "https://github.com/"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        uv sync
+        uv run ruff check --fix ${{ inputs.src-dirs }} || true
+        uv run ruff format ${{ inputs.src-dirs }}
+
+        if [ -n "$(git status --porcelain)" ]; then
+          git add -A
+          git commit -m "fix: auto-fix lint and formatting issues"
+          git push
+        fi
 
 branding:
   icon: check-circle

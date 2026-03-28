@@ -23,6 +23,7 @@ Test UV-based Python projects using ruff, mypy, and pytest.
 | `src-dirs` | Source directories for linting (space-separated) | No | `.` |
 | `working-directory` | Directory containing pyproject.toml | No | `.` |
 | `run-pytest` | Whether to run pytest | No | `true` |
+| `repair-token` | Token for git push. Enables auto-repair on failure. | No | `""` |
 
 ## Usage
 
@@ -71,7 +72,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout
@@ -81,6 +82,37 @@ jobs:
         uses: CVector-Energy/python-test@uv
         with:
           python-version: ${{ matrix.python-version }}
+```
+
+### With Auto-Repair on Pull Requests
+
+When checks fail, the repair step runs `uv sync`, `ruff check --fix`, and `ruff format`, then commits and pushes the fixes. Use a GitHub App token so the push triggers a new workflow run.
+
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub App Token
+        id: app
+        if: github.event_name == 'pull_request'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ steps.app.outputs.token || github.token }}
+
+      - name: Test with UV
+        uses: CVector-Energy/python-test@uv
+        with:
+          repair-token: ${{ steps.app.outputs.token }}
 ```
 
 ## Migrating from Poetry to UV
