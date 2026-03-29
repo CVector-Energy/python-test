@@ -31,7 +31,7 @@ inputs:
     required: false
     default: "true"
   repair-token:
-    description: "Token for git push. When provided, enables a repair step that runs after check failures: sync, ruff check --fix, ruff format, then commit and push. Use a GitHub App token so the push triggers a new workflow run. The calling workflow must checkout with ref: ${{ github.head_ref }}."
+    description: "Token for git push. When provided, enables a repair step that runs after check failures: sync, ruff check --fix, ruff format, then commit and push. Use a GitHub App token so the push triggers a new workflow run. The calling workflow must checkout the PR head branch."
     required: false
     default: ""
 
@@ -133,10 +133,10 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: ${{ steps.pm.outputs.run }} ruff format --exit-non-zero-on-format ${{ inputs.src-dirs }}
 
-    - name: Run ruff check --fix
+    - name: Run ruff check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ steps.pm.outputs.run }} ruff check --fix ${{ inputs.src-dirs }}
+      run: ${{ steps.pm.outputs.run }} ruff check --fix --exit-non-zero-on-fix ${{ inputs.src-dirs }}
 
     - name: Repair
       if: failure() && inputs.repair-token != ''
