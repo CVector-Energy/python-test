@@ -1,15 +1,23 @@
 name: CVector Python Test
-description: Setup UV and run ruff, mypy, and pytest for Python projects
+description: Setup Python dependencies and run ruff, mypy, and pytest
 
 inputs:
   python-version:
     description: Python version to use
     required: false
     default: "3.14"
+  package-manager:
+    description: "Package manager to use: auto, uv, or poetry (auto detects from lock file)"
+    required: false
+    default: "auto"
   uv-version:
     description: UV version to install
     required: false
     default: "0.11.2"
+  poetry-version:
+    description: Poetry version to install
+    required: false
+    default: "2.3.3"
   src-dirs:
     description: Source directories for linting (space-separated)
     required: false
@@ -25,7 +33,7 @@ inputs:
   repair-token:
     description: >
       Token for git push. When provided, enables a repair step that runs
-      after check failures: uv sync, ruff check --fix, ruff format, then
+      after check failures: sync, ruff check --fix, ruff format, then
       commit and push. Use a GitHub App token so the push triggers a new
       workflow run. The calling workflow must checkout with
       ref: ${{ github.head_ref }}.
@@ -41,51 +49,83 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    - name: Detect package manager
+      id: pm
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ "${{ inputs.package-manager }}" != "auto" ]; then
+          manager="${{ inputs.package-manager }}"
+        elif [ -f uv.lock ]; then
+          manager="uv"
+        elif [ -f poetry.lock ]; then
+          manager="poetry"
+        else
+          echo "::error::No lock file found. Create uv.lock or poetry.lock, or set package-manager input."
+          exit 1
+        fi
+        echo "manager=${manager}" >> "$GITHUB_OUTPUT"
+        if [ "$manager" = "uv" ]; then
+          echo "run=uv run" >> "$GITHUB_OUTPUT"
+          echo "sync=uv sync" >> "$GITHUB_OUTPUT"
+        else
+          echo "run=poetry run" >> "$GITHUB_OUTPUT"
+          echo "sync=poetry install --no-interaction" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Install UV
+      if: steps.pm.outputs.manager == 'uv'
       uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
       with:
         version: ${{ inputs.uv-version }}
+
+    - name: Load cached Poetry installation
+      if: steps.pm.outputs.manager == 'poetry'
+      id: cached-poetry
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.local
+        key: poetry-${{ inputs.poetry-version }}-python-${{ steps.setup.outputs.python-version }}
+
+    - name: Install Poetry
+      if: steps.pm.outputs.manager == 'poetry'
+      uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+      with:
+        version: ${{ inputs.poetry-version }}
+        virtualenvs-path: ~/.venv
 
     - name: Load cached venv
       id: venv
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: ${{ inputs.working-directory }}/.venv
-        key: venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ inputs.working-directory }}-${{ hashFiles(format('{0}/uv.lock', inputs.working-directory)) }}
+        path: |
+          ${{ inputs.working-directory }}/.venv
+          ~/.venv
+        key: venv-${{ steps.pm.outputs.manager }}-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ inputs.working-directory }}-${{ hashFiles(format('{0}/uv.lock', inputs.working-directory), format('{0}/poetry.lock', inputs.working-directory)) }}
         restore-keys: |
-          venv-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ inputs.working-directory }}-
+          venv-${{ steps.pm.outputs.manager }}-${{ runner.os }}-${{ steps.setup.outputs.python-version }}-${{ inputs.working-directory }}-
 
-    - name: Sync dependencies
-      if: steps.venv.outputs.cache-hit != 'true'
+    - name: Sync dependencies (uv)
+      if: steps.pm.outputs.manager == 'uv' && steps.venv.outputs.cache-hit != 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: uv sync --frozen
 
-    - name: Run ruff check
+    - name: Sync dependencies (poetry)
+      if: steps.pm.outputs.manager == 'poetry' && steps.venv.outputs.cache-hit != 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: uv run ruff check ${{ inputs.src-dirs }}
+      run: poetry sync --no-interaction --no-root
 
-    - name: Run ruff format check
+    - name: Install project (poetry)
+      if: steps.pm.outputs.manager == 'poetry'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: uv run ruff format --check ${{ inputs.src-dirs }}
+      run: poetry install --no-interaction --only-root
 
-    - name: Run mypy
+    - name: Configure git for repair
+      if: inputs.repair-token != ''
       shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: uv run mypy ${{ inputs.src-dirs }}
-
-    - name: Run pytest
-      if: inputs.run-pytest == 'true'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: uv run pytest
-
-    - name: Repair
-      if: failure() && inputs.repair-token != ''
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
       env:
         REPAIR_TOKEN: ${{ inputs.repair-token }}
       run: |
@@ -93,15 +133,37 @@ runs:
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-        uv sync
-        uv run ruff check --fix ${{ inputs.src-dirs }} || true
-        uv run ruff format ${{ inputs.src-dirs }}
+    - name: Run ruff format
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ steps.pm.outputs.run }} ruff format --exit-non-zero-on-format ${{ inputs.src-dirs }}
 
+    - name: Run ruff check --fix
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ steps.pm.outputs.run }} ruff check --fix ${{ inputs.src-dirs }}
+
+    - name: Repair
+      if: failure() && inputs.repair-token != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
         if [ -n "$(git status --porcelain)" ]; then
           git add -A
           git commit -m "fix: auto-fix lint and formatting issues"
           git push
         fi
+
+    - name: Run mypy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ steps.pm.outputs.run }} mypy ${{ inputs.src-dirs }}
+
+    - name: Run pytest
+      if: inputs.run-pytest == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ steps.pm.outputs.run }} pytest
 
 branding:
   icon: check-circle
