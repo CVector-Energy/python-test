@@ -31,12 +31,7 @@ inputs:
     required: false
     default: "true"
   repair-token:
-    description: >
-      Token for git push. When provided, enables a repair step that runs
-      after check failures: sync, ruff check --fix, ruff format, then
-      commit and push. Use a GitHub App token so the push triggers a new
-      workflow run. The calling workflow must checkout with
-      ref: ${{ github.head_ref }}.
+    description: "Token for git push. When provided, enables a repair step that runs after check failures: sync, ruff check --fix, ruff format, then commit and push. Use a GitHub App token so the push triggers a new workflow run. The calling workflow must checkout with ref: ${{ github.head_ref }}."
     required: false
     default: ""
 
