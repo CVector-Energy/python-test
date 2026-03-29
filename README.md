@@ -20,7 +20,7 @@ Test Python projects using ruff, mypy, and pytest. Supports both UV and Poetry â
 | `python-version` | Python version to use | No | `3.14` |
 | `package-manager` | `auto`, `uv`, or `poetry` | No | `auto` |
 | `uv-version` | UV version to install | No | `0.11.2` |
-| `poetry-version` | Poetry version to install | No | `2.2.1` |
+| `poetry-version` | Poetry version to install | No | `2.3.3` |
 | `src-dirs` | Source directories for linting (space-separated) | No | `.` |
 | `working-directory` | Directory containing pyproject.toml | No | `.` |
 | `run-pytest` | Whether to run pytest | No | `true` |
