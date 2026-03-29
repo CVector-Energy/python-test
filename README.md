@@ -36,7 +36,7 @@ steps:
     uses: actions/checkout@v6
 
   - name: Test
-    uses: CVector-Energy/python-test@uv
+    uses: CVector-Energy/python-test@main
 ```
 
 ### With Custom Python Version
@@ -47,7 +47,7 @@ steps:
     uses: actions/checkout@v6
 
   - name: Test
-    uses: CVector-Energy/python-test@uv
+    uses: CVector-Energy/python-test@main
     with:
       python-version: "3.12"
 ```
@@ -67,7 +67,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Test
-        uses: CVector-Energy/python-test@uv
+        uses: CVector-Energy/python-test@main
         with:
           python-version: ${{ matrix.python-version }}
 ```
@@ -98,7 +98,7 @@ jobs:
           token: ${{ steps.app.outputs.token || github.token }}
 
       - name: Test
-        uses: CVector-Energy/python-test@uv
+        uses: CVector-Energy/python-test@main
         with:
           repair-token: ${{ steps.app.outputs.token }}
 ```
