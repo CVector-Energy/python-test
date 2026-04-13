@@ -174,19 +174,40 @@ runs:
                 sys.stderr.write(f"{method} {path} -> {e.code}\n{e.read().decode()}\n")
                 raise
 
-        # Collect modified/added files from the working tree (no local commit needed).
+        # Run from the repo root so paths from `git status` are repo-root-relative
+        # (which is what the GitHub trees API requires) and `open()` resolves
+        # correctly regardless of the action's working-directory input.
+        root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"]
+        ).decode().strip()
+        os.chdir(root)
+
+        # Collect changes from the working tree (no local commit needed).
+        # `git status --porcelain -z` emits NUL-separated entries; for renames
+        # and copies the entry is `<new>\0<old>`, so we consume two tokens.
         porcelain = subprocess.check_output(["git", "status", "--porcelain", "-z"]).decode()
-        files = []
-        for entry in porcelain.split("\0"):
-            if not entry:
+        changes = []  # list of ("write" | "delete", path)
+        tokens = iter(porcelain.split("\0"))
+        for token in tokens:
+            if not token:
                 continue
-            status, path = entry[:2], entry[3:]
-            if status[0] in "MA" or status[1] in "MA":
-                files.append(path)
-        if not files:
-            print("No modified/added files to push.")
+            status, path = token[:2], token[3:]
+            if "R" in status or "C" in status:
+                new_path = path
+                old_path = next(tokens)
+                if "R" in status:
+                    changes.append(("delete", old_path))
+                changes.append(("write", new_path))
+            elif "D" in status:
+                changes.append(("delete", path))
+            elif "M" in status or "A" in status:
+                changes.append(("write", path))
+            # Untracked (??) and ignored (!!) are intentionally skipped.
+
+        if not changes:
+            print("No tracked changes to push.")
             sys.exit(0)
-        print(f"Pushing {len(files)} file(s) to {branch}: {files}")
+        print(f"Pushing {len(changes)} change(s) to {branch}: {changes}")
 
         # Resolve the remote tip and its tree.
         ref = api("GET", f"/repos/{repo}/git/refs/heads/{branch}")
@@ -194,9 +215,14 @@ runs:
         parent_commit = api("GET", f"/repos/{repo}/git/commits/{parent_sha}")
         parent_tree = parent_commit["tree"]["sha"]
 
-        # Upload each changed file as a blob and assemble a tree on top of the parent.
+        # Upload each written file as a blob; emit `sha: null` to delete entries.
         tree_entries = []
-        for path in files:
+        for action, path in changes:
+            if action == "delete":
+                tree_entries.append(
+                    {"path": path, "mode": "100644", "type": "blob", "sha": None}
+                )
+                continue
             with open(path, "rb") as f:
                 content = base64.b64encode(f.read()).decode()
             blob = api(
