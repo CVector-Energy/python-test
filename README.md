@@ -72,20 +72,20 @@ jobs:
           python-version: ${{ matrix.python-version }}
 ```
 
-### With Auto-Repair on Pull Requests
+### With Auto-Repair on Push
 
-When checks fail, the repair step runs `ruff check --fix` and `ruff format`, then commits and pushes the fixes. Use a GitHub App token so the push triggers a new workflow run.
+When checks fail, the repair step runs `ruff check --fix` and `ruff format`, then commits the fixes back to the branch via the GitHub REST API. Use a GitHub App token so the resulting commit triggers a new workflow run (a `GITHUB_TOKEN`-authored commit will not).
+
+The App must be installed on the repository with **Contents: Read and write**.
 
 ```yaml
 jobs:
   test:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     steps:
       - name: Create GitHub App Token
         id: app
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'push'
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.APP_ID }}
@@ -93,9 +93,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
-          token: ${{ steps.app.outputs.token || github.token }}
 
       - name: Test
         uses: CVector-Energy/python-test@main
