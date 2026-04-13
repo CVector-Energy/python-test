@@ -118,20 +118,12 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: poetry install --no-interaction --only-root
 
-    - name: Configure git for repair
-      if: inputs.repair-token != ''
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      env:
-        REPAIR_TOKEN: ${{ inputs.repair-token }}
-      run: |
-        git config --global url."https://x-access-token:${REPAIR_TOKEN}@github.com/".insteadOf "https://github.com/"
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        # Drop the credential persisted by actions/checkout so the URL rewrite above
-        # is the only auth source — otherwise the read-only GITHUB_TOKEN extraheader
-        # wins over the App token and pushes get 403.
-        git config --local --unset-all http.https://github.com/.extraheader || true
+    # Note: no git-credential setup is needed. The Repair step pushes via the
+    # GitHub REST API rather than `git push`, because in this org's setup an
+    # App installation token authorized for Contents:Write at the API level
+    # is still rejected with 403 by git-receive-pack (verified by comparing
+    # PATCH /git/refs returning 422 vs git push returning 403 with the same
+    # token). The API path doesn't need git credentials at all.
 
     - name: Run ruff format
       shell: bash
@@ -147,12 +139,97 @@ runs:
       if: failure() && inputs.repair-token != ''
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        REPAIR_TOKEN: ${{ inputs.repair-token }}
+        TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
       run: |
-        if [ -n "$(git status --porcelain)" ]; then
-          git add -A
-          git commit -m "fix: auto-fix lint and formatting issues"
-          git push
+        if [ -z "$(git status --porcelain)" ]; then
+          exit 0
         fi
+        python3 - <<'PYEOF'
+        import base64
+        import json
+        import os
+        import subprocess
+        import sys
+        import urllib.error
+        import urllib.request
+
+        token = os.environ["REPAIR_TOKEN"]
+        repo = os.environ["GITHUB_REPOSITORY"]
+        branch = os.environ["TARGET_BRANCH"]
+
+        def api(method, path, body=None):
+            url = f"https://api.github.com{path}"
+            data = json.dumps(body).encode() if body is not None else None
+            req = urllib.request.Request(url, data=data, method=method)
+            req.add_header("Authorization", f"token {token}")
+            req.add_header("Accept", "application/vnd.github+json")
+            if data is not None:
+                req.add_header("Content-Type", "application/json")
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    return json.loads(resp.read())
+            except urllib.error.HTTPError as e:
+                sys.stderr.write(f"{method} {path} -> {e.code}\n{e.read().decode()}\n")
+                raise
+
+        # Collect modified/added files from the working tree (no local commit needed).
+        porcelain = subprocess.check_output(["git", "status", "--porcelain", "-z"]).decode()
+        files = []
+        for entry in porcelain.split("\0"):
+            if not entry:
+                continue
+            status, path = entry[:2], entry[3:]
+            if status[0] in "MA" or status[1] in "MA":
+                files.append(path)
+        if not files:
+            print("No modified/added files to push.")
+            sys.exit(0)
+        print(f"Pushing {len(files)} file(s) to {branch}: {files}")
+
+        # Resolve the remote tip and its tree.
+        ref = api("GET", f"/repos/{repo}/git/refs/heads/{branch}")
+        parent_sha = ref["object"]["sha"]
+        parent_commit = api("GET", f"/repos/{repo}/git/commits/{parent_sha}")
+        parent_tree = parent_commit["tree"]["sha"]
+
+        # Upload each changed file as a blob and assemble a tree on top of the parent.
+        tree_entries = []
+        for path in files:
+            with open(path, "rb") as f:
+                content = base64.b64encode(f.read()).decode()
+            blob = api(
+                "POST",
+                f"/repos/{repo}/git/blobs",
+                {"content": content, "encoding": "base64"},
+            )
+            mode = "100755" if os.access(path, os.X_OK) else "100644"
+            tree_entries.append(
+                {"path": path, "mode": mode, "type": "blob", "sha": blob["sha"]}
+            )
+
+        tree = api(
+            "POST",
+            f"/repos/{repo}/git/trees",
+            {"base_tree": parent_tree, "tree": tree_entries},
+        )
+        commit = api(
+            "POST",
+            f"/repos/{repo}/git/commits",
+            {
+                "message": "fix: auto-fix lint and formatting issues",
+                "tree": tree["sha"],
+                "parents": [parent_sha],
+            },
+        )
+        api(
+            "PATCH",
+            f"/repos/{repo}/git/refs/heads/{branch}",
+            {"sha": commit["sha"]},
+        )
+        print(f"Pushed commit {commit['sha']} to refs/heads/{branch}")
+        PYEOF
 
     - name: Run mypy
       shell: bash
