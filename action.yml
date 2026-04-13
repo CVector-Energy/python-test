@@ -121,12 +121,17 @@ runs:
     - name: Configure git for repair
       if: inputs.repair-token != ''
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         REPAIR_TOKEN: ${{ inputs.repair-token }}
       run: |
         git config --global url."https://x-access-token:${REPAIR_TOKEN}@github.com/".insteadOf "https://github.com/"
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        # Drop the credential persisted by actions/checkout so the URL rewrite above
+        # is the only auth source — otherwise the read-only GITHUB_TOKEN extraheader
+        # wins over the App token and pushes get 403.
+        git config --local --unset-all http.https://github.com/.extraheader || true
 
     - name: Run ruff format
       shell: bash
