@@ -187,14 +187,14 @@ runs:
         # and copies the entry is `<new>\0<old>`, so we consume two tokens.
         porcelain = subprocess.check_output(["git", "status", "--porcelain", "-z"]).decode()
         changes = []  # list of ("write" | "delete", path)
-        tokens = iter(porcelain.split("\0"))
-        for token in tokens:
-            if not token:
+        entries = iter(porcelain.split("\0"))
+        for entry in entries:
+            if not entry:
                 continue
-            status, path = token[:2], token[3:]
+            status, path = entry[:2], entry[3:]
             if "R" in status or "C" in status:
                 new_path = path
-                old_path = next(tokens)
+                old_path = next(entries)
                 if "R" in status:
                     changes.append(("delete", old_path))
                 changes.append(("write", new_path))
