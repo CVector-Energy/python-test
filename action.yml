@@ -194,7 +194,9 @@ runs:
             status, path = entry[:2], entry[3:]
             if "R" in status or "C" in status:
                 new_path = path
-                old_path = next(entries)
+                old_path = next(entries, None)
+                if old_path is None:
+                    break
                 if "R" in status:
                     changes.append(("delete", old_path))
                 changes.append(("write", new_path))
