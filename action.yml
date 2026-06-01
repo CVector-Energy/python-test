@@ -244,7 +244,7 @@ runs:
             "POST",
             f"/repos/{repo}/git/commits",
             {
-                "message": "fix: auto-fix lint and formatting issues",
+                "message": "Fix lint and formatting issues",
                 "tree": tree["sha"],
                 "parents": [parent_sha],
             },
