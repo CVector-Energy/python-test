@@ -48,9 +48,11 @@ runs:
       id: pm
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        if [ "${{ inputs.package-manager }}" != "auto" ]; then
-          manager="${{ inputs.package-manager }}"
+        if [ "$PACKAGE_MANAGER" != "auto" ]; then
+          manager="$PACKAGE_MANAGER"
         elif [ -f uv.lock ]; then
           manager="uv"
         elif [ -f poetry.lock ]; then
@@ -125,15 +127,23 @@ runs:
     # PATCH /git/refs returning 422 vs git push returning 403 with the same
     # token). The API path doesn't need git credentials at all.
 
+    # $RUN is the package manager's run prefix ("uv run" or "poetry run") and $SRC_DIRS is a
+    # space-separated list, so both are left unquoted below to split into separate words.
     - name: Run ruff format
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ steps.pm.outputs.run }} ruff format --exit-non-zero-on-format ${{ inputs.src-dirs }}
+      env:
+        RUN: ${{ steps.pm.outputs.run }}
+        SRC_DIRS: ${{ inputs.src-dirs }}
+      run: $RUN ruff format --exit-non-zero-on-format $SRC_DIRS
 
     - name: Run ruff check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ steps.pm.outputs.run }} ruff check --fix --exit-non-zero-on-fix ${{ inputs.src-dirs }}
+      env:
+        RUN: ${{ steps.pm.outputs.run }}
+        SRC_DIRS: ${{ inputs.src-dirs }}
+      run: $RUN ruff check --fix --exit-non-zero-on-fix $SRC_DIRS
 
     - name: Repair
       if: failure() && inputs.repair-token != ''
@@ -262,13 +272,18 @@ runs:
     - name: Run mypy
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ steps.pm.outputs.run }} mypy ${{ inputs.src-dirs }}
+      env:
+        RUN: ${{ steps.pm.outputs.run }}
+        SRC_DIRS: ${{ inputs.src-dirs }}
+      run: $RUN mypy $SRC_DIRS
 
     - name: Run pytest
       if: inputs.run-pytest == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ steps.pm.outputs.run }} pytest
+      env:
+        RUN: ${{ steps.pm.outputs.run }}
+      run: $RUN pytest
 
 branding:
   icon: check-circle
