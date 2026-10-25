@@ -13,7 +13,7 @@ inputs:
   uv-version:
     description: UV version to install
     required: false
-    default: "0.11.2"
+    default: "0.13.5"
   poetry-version:
     description: Poetry version to install
     required: false
